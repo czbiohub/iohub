@@ -1,6 +1,7 @@
 import click
 
 from iohub._version import __version__
+from iohub.cli.rechunk import rechunking
 from iohub.convert import TIFFConverter
 from iohub.reader import print_info
 
@@ -101,3 +102,49 @@ def convert(input, output, format, scale_voxels, grid_layout, chunks):
         chunks=chunks,
     )
     converter.run()
+
+
+@cli.command()
+@click.argument(
+    "input_zarr",
+    nargs=-1,
+    required=True,
+    type=_DATASET_PATH,
+)
+@click.option(
+    "--output",
+    "-o",
+    required=True,
+    type=click.Path(exists=False, resolve_path=True),
+    help="Output zarr store (/**/converted.zarr)",
+)
+@click.help_option("-h", "--help")
+@click.option(
+    "--chunks",
+    "-c",
+    required=False,
+    type=(int, int, int),
+    default=None,
+    help="New chunksize given as (Z,Y,X) tuple argument. The ZYX chunk size will be limited to 500 MB.",
+)
+@click.option(
+    "--num-processes",
+    "-j",
+    default=1,
+    help="Number of simultaneous processes",
+    required=False,
+    type=int,
+)
+def rechunk(input_zarr, output, chunks, num_processes):
+    """Rechunks OME-Zarr dataset to input chunk_size"""
+    rechunking(input_zarr, output, chunks, num_processes)
+
+
+# if __name__ == "__main__":
+#     from iohub.cli.rechunk import rechunking
+
+#     input = "/hpc/projects/comp.micro/mantis/2023_08_09_HEK_PCNA_H2B/xx-mbl_course_H2B/cropped_dataset_v3_small.zarr"
+#     output = "./output_test.zarr"
+#     chunks = (1, 1, 1)
+#     num_processes = 4
+#     rechunking(input, output, chunks, num_processes)
