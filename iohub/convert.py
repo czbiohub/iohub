@@ -147,6 +147,7 @@ class TIFFConverter:
             # for `get_num_positions()`
             self.p = self.reader.num_positions
         self.t = self.reader.frames
+        self.cams = self.reader.cameras  # multicam
         self.c = self.reader.channels
         self.z = self.reader.slices
         self.y = self.reader.height
@@ -474,7 +475,7 @@ class TIFFConverter:
             )
             try:
                 ndtiff_pos_idx, *_ = self.reader._check_coordinates(
-                    ndtiff_pos_idx, 0, 0, 0
+                    ndtiff_pos_idx, 0, 0, 0, 0
                 )
             except ValueError:
                 # Log warning and continue if some positions were not
@@ -489,13 +490,18 @@ class TIFFConverter:
             zarr_pos_name = self.zarr_position_names[p_idx]
             zarr_arr = self.writer[zarr_pos_name]["0"]
 
-            for t_idx, c_idx in product(
+            for t_idx, c_idx, cam_idx in product(
                 range(self.t),
                 range(self.c),
+                range(len(self.cams)),
                 bar_format=bar_format_time_channel,
                 position=1,
                 leave=False,
             ):
+                if self.reader.cameras is not None:
+                    c_idx = c_idx // len(self.cams)
+                    ndtiff_cam_str = self.reader.cameras[cam_idx]
+
                 ndtiff_channel_idx = (
                     self.reader.channel_names[c_idx]
                     if self.reader.str_channel_axis
@@ -507,9 +513,10 @@ class TIFFConverter:
                     _,
                     ndtiff_t_idx,
                     ndtiff_channel_idx,
+                    ndtiff_cam_str,
                     ndtiff_z_idx,
                 ) = self.reader._check_coordinates(
-                    ndtiff_pos_idx, t_idx, ndtiff_channel_idx, 0
+                    ndtiff_pos_idx, t_idx, ndtiff_channel_idx, 0, 0
                 )
                 # Log warning and continue if some T/C were not acquired in the
                 # dataset
@@ -518,6 +525,7 @@ class TIFFConverter:
                     time=ndtiff_t_idx,
                     channel=ndtiff_channel_idx,
                     z=ndtiff_z_idx,
+                    camera=ndtiff_cam_str,
                 ):
                     logging.warning(
                         f"Cannot load data at timepoint {t_idx},  channel "
@@ -540,6 +548,7 @@ class TIFFConverter:
                         ndtiff_pos_idx,
                         ndtiff_t_idx,
                         ndtiff_channel_idx,
+                        ndtiff_cam_str,
                         z_idx,
                     )
                     # T/C/Z

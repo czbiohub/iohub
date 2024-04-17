@@ -23,10 +23,14 @@ class NDTiffReader(ReaderBase):
         self.frames = (
             len(self._axes["time"]) if "time" in self._axes.keys() else 1
         )
+        self.slices = len(self._axes["z"]) if "z" in self._axes.keys() else 1
+        self.cameras = (
+            self._axes["camera"] if "camera" in self._axes.keys() else []
+        )
         self.channels = (
             len(self._axes["channel"]) if "channel" in self._axes.keys() else 1
         )
-        self.slices = len(self._axes["z"]) if "z" in self._axes.keys() else 1
+
         self.height = self.dataset.image_height
         self.width = self.dataset.image_width
         self.dtype = self.dataset.dtype
@@ -37,20 +41,29 @@ class NDTiffReader(ReaderBase):
         self.z_step_size = self.mm_meta["Summary"]["z-step_um"]
         self.xy_pixel_size = self.mm_meta["Summary"].get("PixelSize_um", 1.0)
 
+        if len(self.cameras) > 1:
+            channel_names = []
+            self.channels = self.channels * len(self.cameras)
+            for chan_name in self.channel_names:
+                for cam in self.cameras:
+                    channel_names.append(chan_name + "_" + cam)
+            self.channel_names = channel_names
+
     def _get_summary_metadata(self):
         pm_metadata = self.dataset.summary_metadata
         pm_metadata["MicroManagerVersion"] = "pycromanager"
         pm_metadata["Positions"] = self.get_num_positions()
-        img_metadata = self.get_image_metadata(0, 0, 0, 0)
+
+        img_metadata = self.get_image_metadata(0, 0, 0, 0, 0)
 
         pm_metadata["z-step_um"] = None
         if "ZPosition_um_Intended" in img_metadata.keys():
             pm_metadata["z-step_um"] = np.around(
                 abs(
-                    self.get_image_metadata(0, 0, 0, 1)[
+                    self.get_image_metadata(0, 0, 0, 0, 1)[
                         "ZPosition_um_Intended"
                     ]
-                    - self.get_image_metadata(0, 0, 0, 0)[
+                    - self.get_image_metadata(0, 0, 0, 0, 0)[
                         "ZPosition_um_Intended"
                     ]
                 ),
@@ -61,7 +74,7 @@ class NDTiffReader(ReaderBase):
         if "position" in self._axes:
             for position in self._axes["position"]:
                 position_metadata = {}
-                img_metadata = self.get_image_metadata(position, 0, 0, 0)
+                img_metadata = self.get_image_metadata(position, 0, 0, 0, 0)
 
                 if img_metadata is not None and all(
                     key in img_metadata.keys()
@@ -102,15 +115,20 @@ class NDTiffReader(ReaderBase):
         return self._str_channel_axis
 
     def _check_coordinates(
-        self, p: Union[int, str], t: int, c: Union[int, str], z: int
+        self,
+        p: Union[int, str],
+        t: int,
+        c: Union[int, str],
+        camera: Union[int, str],
+        z: int,
     ):
         """
         Check that the (p, t, c, z) coordinates are part of the ndtiff dataset.
         Replace coordinates with None or string values in specific cases - see
         below
         """
-        coords = [p, t, c, z]
-        axes = ("position", "time", "channel", "z")
+        coords = [p, t, c, camera, z]
+        axes = ("position", "time", "channel", "camera", "z")
 
         for i, axis in enumerate(axes):
             coord = coords[i]
@@ -172,7 +190,12 @@ class NDTiffReader(ReaderBase):
         )
 
     def get_image(
-        self, p: Union[int, str], t: int, c: Union[int, str], z: int
+        self,
+        p: Union[int, str],
+        t: int,
+        c: Union[int, str],
+        camera: Union[int, str],
+        z: int,
     ) -> np.ndarray:
         """return the image at the provided PTCZ coordinates
 
@@ -194,10 +217,20 @@ class NDTiffReader(ReaderBase):
         """
 
         image = None
-        p, t, c, z = self._check_coordinates(p, t, c, z)
+        p, t, c, camera, z = self._check_coordinates(
+            p,
+            t,
+            c,
+            camera,
+            z,
+        )
 
-        if self.dataset.has_image(position=p, time=t, channel=c, z=z):
-            image = self.dataset.read_image(position=p, time=t, channel=c, z=z)
+        if self.dataset.has_image(
+            position=p, time=t, channel=c, camera=camera, z=z
+        ):
+            image = self.dataset.read_image(
+                position=p, time=t, channel=c, camera=camera, z=z
+            )
 
         return image
 
@@ -238,6 +271,7 @@ class NDTiffReader(ReaderBase):
                 position = None
 
         da = self.dataset.as_array(position=position)
+
         shape = (
             self.frames,
             self.channels,
@@ -265,7 +299,12 @@ class NDTiffReader(ReaderBase):
         return np.asarray(self.get_zarr(position))
 
     def get_image_metadata(
-        self, p: Union[int, str], t: int, c: Union[int, str], z: int
+        self,
+        p: Union[int, str],
+        t: int,
+        c: Union[int, str],
+        z: int,
+        camera: Union[int, str],
     ) -> dict:
         """Return image plane metadata at the requested PTCZ coordinates
 
@@ -286,11 +325,13 @@ class NDTiffReader(ReaderBase):
             image plane metadata
         """
         metadata = None
-        p, t, c, z = self._check_coordinates(p, t, c, z)
+        p, t, c, camera, z = self._check_coordinates(p, t, c, z, camera)
 
-        if self.dataset.has_image(position=p, time=t, channel=c, z=z):
+        if self.dataset.has_image(
+            position=p, time=t, channel=c, z=z, camera=camera
+        ):
             metadata = self.dataset.read_metadata(
-                position=p, time=t, channel=c, z=z
+                position=p, time=t, channel=c, z=z, camera=camera
             )
 
         return metadata
