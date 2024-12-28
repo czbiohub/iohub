@@ -320,6 +320,28 @@ def test_position_data(channels_and_random_5d, arr_name):
     deadline=2000,
     suppress_health_check=[HealthCheck.data_too_large],
 )
+def test_ome_zarr_to_tensorstore(channels_and_random_5d, arr_name):
+    """Test `iohub.ngff.Position.data` to tensortore"""
+    pytest.importorskip("tensorstore")
+    channel_names, random_5d = channels_and_random_5d
+    with _temp_ome_zarr(random_5d, channel_names, "0") as dataset:
+        assert_array_almost_equal(dataset.data.numpy(), random_5d)
+    with pytest.raises(KeyError):
+        with _temp_ome_zarr(random_5d, channel_names, arr_name) as dataset:
+            t = dataset.data.tensorstore()
+            t.read().result()
+            del t
+
+
+@given(
+    channels_and_random_5d=_channels_and_random_5d(),
+    arr_name=short_alpha_numeric,
+)
+@settings(
+    max_examples=16,
+    deadline=2000,
+    suppress_health_check=[HealthCheck.data_too_large],
+)
 def test_append_channel(channels_and_random_5d, arr_name):
     """Test `iohub.ngff.Position.append_channel()`"""
     channel_names, random_5d = channels_and_random_5d

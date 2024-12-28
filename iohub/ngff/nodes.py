@@ -9,6 +9,7 @@ import logging
 import math
 import os
 from copy import deepcopy
+from pathlib import Path
 from typing import TYPE_CHECKING, Generator, Literal, Sequence, Type
 
 import numpy as np
@@ -351,7 +352,27 @@ class ImageArray(zarr.Array):
         raise NotImplementedError
 
     def tensorstore(self):
-        raise NotImplementedError
+        import tensorstore as ts
+
+        metadata = {
+            "dtype": self.dtype.str,
+            "shape": self.shape,
+            "chunks": self.chunks,
+        }
+        ts_spec = {
+            "driver": "zarr",
+            "kvstore": {
+                "driver": "file",
+                "path": str((Path(self._store.path) / self.path).resolve()),
+            },
+            "metadata": metadata,
+        }
+        try:
+            zarr_dataset = ts.open(ts_spec, open=True).result()
+        except ValueError as e:
+            print(f"Error opening Zarr store: {e}")
+            raise
+        return zarr_dataset
 
 
 class TiledImageArray(ImageArray):
